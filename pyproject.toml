@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "faultier"
+version = "0.1.30"
+#dynamic = ["version"]
+
+authors = [{ name = "Thomas 'stacksmashing' Roth", email = "code@stacksmashing.net"}]
+description = "A library to control the Faultier glitcher."
+#readme = "README.md"
+#license = { file = "LICENSE" }  # Ensure you have a 'LICENSE' file at the root of your project
+#classifiers = [
+#    "Programming Language :: Python :: 3",
+#    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+#    "Operating System :: OS Independent"
+#]
+
+dependencies = [
+    "pyserial",
+    "plotly",
+    "google",
+    "protobuf",
+    "tqdm",
+    "matplotlib",
+    "jupyter",
+    "numpy"
+]
+
+#[project.urls]
+#homepage = ""  # Optionally add project homepage URL
+#documentation = ""  # Optionally add documentation URL
+#repository = ""  # Optionally add repository URL
+
+[tool.setuptools]
+packages = ["faultier"]
+include-package-data = false
+
+[tool.setuptools.package-data]
+faultier = ["docs/*.svg", "example_firmware/*.hex"]
