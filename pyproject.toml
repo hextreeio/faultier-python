@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "faultier"
-version = "0.1.30"
+version = "0.1.31"
 #dynamic = ["version"]
 
 authors = [{ name = "Thomas 'stacksmashing' Roth", email = "code@stacksmashing.net"}]
-description = "A library to control the Faultier glitcher."
+description = "A library to control the Faultier fault-injection tool."
 #readme = "README.md"
 #license = { file = "LICENSE" }  # Ensure you have a 'LICENSE' file at the root of your project
 #classifiers = [

@@ -29,21 +29,23 @@ def convert_uint8_samples(input: bytes):
     the Faultier first.
 """
 class Faultier:
-    VID = "2b3e"
-    PID = "0004"
     """
     :param path: The path to the serial device. Note that the Faultier exposes
                  two serial devices - the first one is the control channel.
                  
                  On mac this will be /dev/cu.usbmodemfaultier1.
     """
+
+    VID = "2b3e"
+    PID = "0004"
+
     def __init__(self, path = None):
         """
         """
         if path:
             self.device = serial.Serial(path)
         else:
-            path = self.find_serial_port()
+            path = self._find_serial_port()
             if not path:
                 raise Exception("No suitable serial port found.")
             self.device = serial.Serial(path)
@@ -62,20 +64,25 @@ class Faultier:
         self.default_settings()
     
     def get_serial_path(self):
-        return self.find_serial_port(index=1)
+        """
+        The Faultier comes up as two serial ports. The first one is the control channel,
+        and the second one is the UART bridge onto the 20-pin connector.
+        This function returns the path to the second serial port.
+        """
+        return self._find_serial_port(index=1)
 
-    def find_serial_port(self, index = 0):
+    def _find_serial_port(self, index = 0):
         system = platform.system()
         if system == "Windows":
-            return self.find_serial_port_windows(index)
+            return self._find_serial_port_windows(index)
         elif system == "Darwin":  # macOS
-            return self.find_serial_port_macos(index)
+            return self._find_serial_port_macos(index)
         elif system == "Linux":
-            return self.find_serial_port_linux(index)
+            return self._find_serial_port_linux(index)
         else:
             raise Exception(f"Unsupported platform: {system}")
     
-    def find_serial_port_windows(self, index = 0):
+    def _find_serial_port_windows(self, index = 0):
         i = 0
         for port in serial.tools.list_ports.comports():
             if self.VID.lower() in port.hwid.lower() and self.PID.lower() in port.hwid.lower():
@@ -84,7 +91,7 @@ class Faultier:
                 i += 1
         return None
 
-    def find_serial_port_macos(self, index = 0):
+    def _find_serial_port_macos(self, index = 0):
         i = 0
         ports = serial.tools.list_ports.comports()
         for port in ports:
@@ -96,7 +103,7 @@ class Faultier:
                 i += 1
         return None
 
-    def find_serial_port_linux(self, index = 0):
+    def _find_serial_port_linux(self, index = 0):
         if(index == 0):
             return "/dev/serial/by-id/usb-stacksmashing_Faultier_faultier-if00"
         if(index == 1):
@@ -162,9 +169,30 @@ class Faultier:
                 trigger_pull_configuration = TRIGGER_PULL_NONE)
 
     def default_settings(self):
+        """
+        Reset the glitcher configuration to the default settings, namely: No trigger,
+        no glitch or power-cycle output, delay and pulse to 0, and the pull-configuration
+        of the trigger to none.
+        """
         self.glitcher_configuration = self._get_default_settings()
 
     def configure_adc(self, source, sample_count):
+        """
+        Configures the ADC of the Faultier. The ADC is filled every-time
+        that power_cycle() or glitch() is run and starts running after the
+        trigger triggered (or immediately if no trigger is configured).
+
+        :param source: The ADC channel to use
+
+            - `ADC_CROWBAR`: Measure on the Crowbar pin (drain-side)
+            - `ADC_MUX0`: Measure on the MUX0 pin
+            - `ADX_EXT1`: Measure on the EXT1 pin
+
+        :param sample_count: The number of ADC samples to collect. Maximum is 30000.
+        """
+
+        if sample_count > 30000:
+            raise ValueError(f"Sample count must be under 30000. Provided {sample_count}.")
         configure_adc = CommandConfigureADC(
             source = source,
             sample_count = sample_count
@@ -263,6 +291,16 @@ class Faultier:
         self._check_ok()
 
     def glitch(self, delay = None, pulse = None):
+        """
+        Perform a glitch. Namely power-cycles (if enabled), then waits for a
+        trigger (if configured), then waits for delay-cycles, and then enables
+        the configured glitch-output (if any) for pulse-cycles.
+
+        :param delay: Delay between trigger and glitch
+
+        :param pulse: Pulse length for the glitch
+        """
+
         if delay != None:
             self.glitcher_configuration.delay = delay
         if pulse != None:
@@ -278,6 +316,15 @@ class Faultier:
         self._check_response()
 
     def glitch_non_blocking(self):
+        """
+        A non-blocking version of the glitch function. Allows to arm a glitch
+        but then still run Python code. Useful for example if your trigger is based
+        on another piece of code (i.e. starting a debugger transaction or sending
+        something via UART.)
+
+        You MUST call `glitch_check_non_blocking_response` for each glitch_non_blocking
+        call, otherwise the communication between the host and the Faultier will desync.
+        """
         cmd = Command()
         cmd.configure_glitcher.CopyFrom(self.glitcher_configuration)
         self._send_protobuf(cmd)
@@ -288,9 +335,18 @@ class Faultier:
         self._send_protobuf(cmd)
     
     def glitch_check_non_blocking_response(self):
+        """
+        Reads the response for a non-blocking glitch from the Faultier. This function will
+        then cause the error-exceptions such as TriggerTimeout etc.
+        """
         self._check_response()
 
     def swd_check(self):
+        """
+        Uses the Program header to very quickly check whether an SWD device
+        can be found. Useful when for example checking whether a glitch re-enabled
+        SWD such as on the STM32 RDP2 to RDP1 glitch.
+        """
         cmd = Command()
         cmd.swd_check.CopyFrom(CommandSWDCheck(function = SWD_CHECK_ENABLED))
         self._send_protobuf(cmd)
@@ -298,6 +354,9 @@ class Faultier:
         return response.swd_check.enabled
 
     def nrf52_check(self):
+        """
+        nRF52 specific check to see whether APPROTECT is disabled/flash can be read.
+        """
         cmd = Command()
         cmd.swd_check.CopyFrom(CommandSWDCheck(function = SWD_CHECK_NRF52))
         self._send_protobuf(cmd)
@@ -310,8 +369,13 @@ class Faultier:
         return response.swd_check.enabled
 
     def power_cycle(self):
-        # This essentially just calls a glitch,
-        # but with trigger & output disabled.
+        """
+        Power-cycles the target.
+
+        Implementation-wise this actually causes a full glitch to be run, but with
+        trigger, delay, pulse, and glitch-output disabled. This means that a power-cycle
+        will also fill the ADC.
+        """
         config = self._get_default_settings()
         config.power_cycle_output = self.glitcher_configuration.power_cycle_output
         config.power_cycle_length = self.glitcher_configuration.power_cycle_length
@@ -322,45 +386,40 @@ class Faultier:
         self._send_protobuf(cmd)
         self._check_response()
 
-    def default_settings(self):
-        self.glitcher_configuration = CommandConfigureGlitcher(
-                trigger_type = TRIGGER_NONE,
-                trigger_source = TRIGGER_IN_NONE,
-                glitch_output = OUT_NONE,
-                delay = 0,
-                pulse = 0,
-                power_cycle_output = OUT_NONE,
-                power_cycle_length = 0,
-                trigger_pull_configuration = TRIGGER_PULL_NONE)
-
     def read_adc(self):
+        """
+        Receives the current ADC sample-buffer from the device.
+        """
         cmd = Command()
         cmd.read_adc.CopyFrom(CommandReadADC())
         self._send_protobuf(cmd)
         response = self._check_response()
         return convert_uint8_samples(response.adc.samples)
 
-    @staticmethod
-    def nrf_flash_and_lock():
-        Faultier.nrf_unlock()
-        print("Programming softdevice...")
+    # @staticmethod
+    # def nrf_flash_and_lock():
+    #     Faultier.nrf_unlock()
+    #     print("Programming softdevice...")
         
-        subprocess.run([
-            "openocd", "-s", "/usr/local/share/openocd",
-            "-f", "interface/tamarin.cfg",
-            "-f", "target/nrf52.cfg",
-            "-c", f"program {os.path.join(MODULE_DIR, 'example_firmware', 's132_nrf52_7.2.0_softdevice.hex')}; exit"
-            ])
-        print("Programming firmware...")
-        subprocess.run([
-            "openocd", "-f", "interface/tamarin.cfg", "-f", "target/nrf52.cfg",
-            "-c", f"program {os.path.join(MODULE_DIR, 'example_firmware', 'nrf52832_xxaa.hex')}; exit"
-        ])
-        print("Locking chip...")
-        Faultier.nrf_lock()
+    #     subprocess.run([
+    #         "openocd", "-s", "/usr/local/share/openocd",
+    #         "-f", "interface/tamarin.cfg",
+    #         "-f", "target/nrf52.cfg",
+    #         "-c", f"program {os.path.join(MODULE_DIR, 'example_firmware', 's132_nrf52_7.2.0_softdevice.hex')}; exit"
+    #         ])
+    #     print("Programming firmware...")
+    #     subprocess.run([
+    #         "openocd", "-f", "interface/tamarin.cfg", "-f", "target/nrf52.cfg",
+    #         "-c", f"program {os.path.join(MODULE_DIR, 'example_firmware', 'nrf52832_xxaa.hex')}; exit"
+    #     ])
+    #     print("Locking chip...")
+    #     Faultier.nrf_lock()
 
     @staticmethod
     def flash_nrf(path):
+        """
+        Flashes a connect nRF52 with the provided firmware. Requires OpenOCD to be in path.
+        """
         print("Flashing nRF...")
         if not os.path.isfile(path):
             raise Exception(f"File {path} not found.")
@@ -387,6 +446,10 @@ class Faultier:
 
     @staticmethod
     def lock_and_flash_nrf(path):
+        """
+        Flashes and then APPROTECT-locks a connected nRF52 with the provided firmware.
+        Requires OpenOCD to be in path.
+        """
         print("Flashing nRF...")
         if not os.path.isfile(path):
             raise Exception(f"File {path} not found.")
@@ -413,6 +476,10 @@ class Faultier:
 
     @staticmethod
     def check_nrf_lock():
+        """
+        Checks whether the connected device has APPROTECT enabled using OpenOCD.
+        Similar to nrf52_check, but much slower and using OpenOCD.
+        """
         cmd = [
             "openocd",
             "-f", "interface/tamarin.cfg",
@@ -431,6 +498,9 @@ class Faultier:
 
     @staticmethod
     def lock_nrf():
+        """
+        Locks the connect nRF52 using APPROTECT. Requires OpenOCD.
+        """
         print("Locking nRF...")
         cmd = [
             "openocd",
@@ -449,6 +519,9 @@ class Faultier:
 
     @staticmethod
     def unlock_nrf():
+        """
+        Unlocks the connect nRF52 by running nrf52_recover in OpenOCD.
+        """
         print("Unlocking nRF...")
         cmd = [
             "openocd",
