@@ -37,7 +37,7 @@ class Faultier:
     """
 
     VID = "2b3e"
-    PID = "0004"
+    PID = "2343"
 
     def __init__(self, path = None):
         """
@@ -95,8 +95,6 @@ class Faultier:
         i = 0
         ports = serial.tools.list_ports.comports()
         for port in ports:
-            VID = "2b3e"
-            PID = "0004"
             if f"USB VID:PID={self.VID.upper()}:{self.PID.upper()}" in port.hwid:
                 if(i == index):
                     return port.device
