@@ -366,17 +366,31 @@ class Faultier:
             pass
         return response.swd_check.enabled
 
-    def power_cycle(self):
+    def power_cycle(self, power_cycle_length=None, power_cycle_output=None):
         """
         Power-cycles the target.
 
         Implementation-wise this actually causes a full glitch to be run, but with
         trigger, delay, pulse, and glitch-output disabled. This means that a power-cycle
         will also fill the ADC.
+
+        power_cycle_length and power_cycle_output are taken from the glitcher configuration by default, if not overriden.
+
+        :param power_cycle: Output to toggle the powercycle. If not provided, this will be the value supplied during configure_glitcher().
+
+            - `OUT_CROWBAR`: Route the power-cycle to the gate of the Crowbar MOSFET.
+            - `OUT_MUX0`: Route the power-cycle to control channel 0/X of the analogue switch (the one exposed on the SMA connector).
+            - `OUT_MUX1`: Route the power-cycle to channel 1/Y of the analogue switch (exposed on 20-pin header).
+            - `OUT_MUX2`: Route the power-cycle to channel 2/Z of the analogue switch (exposed on 20-pin header).
+            - `OUT_EXT0`: Route the power-cycle signal to the EXT0 header. Useful to trigger external tools such as a ChipSHOUTER or laser.
+            - `OUT_EXT1`: Route the power-cycle signal to the EXT1 header. Same as above.
+            - `OUT_NONE`: Disable power-cycle generation.
+
+        :param power_cycle_length: The number of clock-cycles for the power cycle. If not provided, this will be the value supplied during configure_glitcher().
         """
         config = self._get_default_settings()
-        config.power_cycle_output = self.glitcher_configuration.power_cycle_output
-        config.power_cycle_length = self.glitcher_configuration.power_cycle_length
+        config.power_cycle_output = self.glitcher_configuration.power_cycle_output if power_cycle_length is None else power_cycle_length
+        config.power_cycle_length = self.glitcher_configuration.power_cycle_length if power_cycle_output is None else power_cycle_output
         self._send_configuration(config)
 
         cmd = Command()
