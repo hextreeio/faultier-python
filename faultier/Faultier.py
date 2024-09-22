@@ -394,6 +394,32 @@ class Faultier:
         response = self._check_response()
         return convert_uint8_samples(response.adc.samples)
 
+    def get_io_state(self, pin):
+        """
+        Gets the state of a Faultier GPIO pin (1: high, 0: low).
+        WARNING: This API does not validate whether the pin is in use (e.g. for UART)
+
+        :param pin: GPIO PIN to use, expects integer between 0-9.
+        """
+        cmd = Command()
+        cmd.io_get_state.CopyFrom(CommandIOGetState(pin = pin))
+        self._send_protobuf(cmd)
+        response = self._check_response()
+        return response.io_get_state.state
+
+    def set_io_state(self, pin, state):
+        """
+        Sets the state of a Faultier-IO pin
+        WARNING: This API does not validate whether the pin is in use (e.g., for UART)
+
+        :param pin: GPIO PIN to use, expects integer between 0-9.
+        :param state: The state to set the pin to (1: high, 0:low)
+        """
+        cmd = Command()
+        cmd.io_set_state.CopyFrom(CommandIOSetState(pin = pin, state = state))
+        self._send_protobuf(cmd)
+        self._check_ok()
+
     # @staticmethod
     # def nrf_flash_and_lock():
     #     Faultier.nrf_unlock()
