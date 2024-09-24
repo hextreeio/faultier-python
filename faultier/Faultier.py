@@ -85,7 +85,7 @@ class Faultier:
     def _find_serial_port_windows(self, index = 0):
         i = 0
         for port in serial.tools.list_ports.comports():
-            if self.VID.lower() in port.hwid.lower() and self.PID.lower() in port.hwid.lower():
+            if self.VID.lower() in port.hwid.lower() and self.PID.lower() in port.hwid.lower() and not "location" in port.hwid.lower():
                 if(i == index):
                     return port.device
                 i += 1
