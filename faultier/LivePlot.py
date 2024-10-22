@@ -74,7 +74,14 @@ class LiveMarkerPlotOld:
 
 
 class LiveMarkerPlot:
-    def __init__(self, gdc):
+    def __init__(self, gdc, x_range=None, y_range=None):
+        """
+        Initializes the LiveMarkerPlot.
+
+        :param gdc: The data collection object.
+        :param x_range: The range for the x-axis as a tuple (min, max), or None to auto-scale.
+        :param y_range: The range for the y-axis as a tuple (min, max), or None to auto-scale.
+        """
         self.gdc = gdc
 
         figure_widget_data = []
@@ -85,16 +92,24 @@ class LiveMarkerPlot:
                 )
 
         self.fig = go.FigureWidget(data=figure_widget_data)
-        # self.fig.update_layout(yaxis=dict(range=[0, 1]))
-        self.fig.update_layout(
-            margin=dict(l=20, r=20, t=20, b=20),
-            xaxis_title="Delay",
-            yaxis_title="Pulse"
-        )
-        # vline = self.fig.add_vline(x=200, line_width=1, line_dash="dash", line_color="red")
+
+        # Set up x and y axis ranges if provided
+        layout_options = {
+            "margin": dict(l=20, r=20, t=20, b=20),
+            "xaxis_title": "Delay",
+            "yaxis_title": "Pulse"
+        }
+        if x_range:
+            layout_options["xaxis"] = dict(range=x_range)
+        if y_range:
+            layout_options["yaxis"] = dict(range=y_range)
+
+        self.fig.update_layout(**layout_options)
         self.vline_x = 200
         self.last_update = time.time()
         display(self.fig)
+
+
     
     def slow_update(self):
         if((time.time() - self.last_update) < 3):

@@ -6,7 +6,7 @@
 Faultier documentation
 ======================
 
-This is the Python documentation for the Faultier library.
+This is the Python documentation for the Faultier library
 
 .. toctree::
    :maxdepth: 2

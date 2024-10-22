@@ -313,7 +313,7 @@ class Faultier:
         self._send_protobuf(cmd)
         self._check_response()
 
-    def glitch_non_blocking(self):
+    def glitch_non_blocking(self, delay = None, pulse = None):
         """
         A non-blocking version of the glitch function. Allows to arm a glitch
         but then still run Python code. Useful for example if your trigger is based
@@ -323,11 +323,13 @@ class Faultier:
         You MUST call `glitch_check_non_blocking_response` for each glitch_non_blocking
         call, otherwise the communication between the host and the Faultier will desync.
         """
-        cmd = Command()
-        cmd.configure_glitcher.CopyFrom(self.glitcher_configuration)
-        self._send_protobuf(cmd)
-        self._check_ok()
 
+        if delay != None:
+            self.glitcher_configuration.delay = delay
+        if pulse != None:
+            self.glitcher_configuration.pulse = pulse
+
+        self._send_configuration()
         cmd = Command()
         cmd.glitch.CopyFrom(CommandGlitch())
         self._send_protobuf(cmd)
