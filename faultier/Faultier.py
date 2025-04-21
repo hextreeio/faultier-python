@@ -1,14 +1,16 @@
-import serial
 import serial.tools.list_ports
 import platform
 import subprocess
 import sys
-import plotly.graph_objs as go
-from IPython.display import display
+# import plotly.graph_objs as go
+# from IPython.display import display
 from .faultier_pb2 import *
 import struct
 import subprocess
 import os
+
+import usb.core
+import usb.util
 
 # Get the directory of the current module
 MODULE_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -36,28 +38,19 @@ class Faultier:
                  On mac this will be /dev/cu.usbmodemfaultier1.
     """
 
-    VID = "2b3e"
-    PID = "2343"
+    VID = 0x37de
+    PID = 0xfffd
 
-    def _open_auto(self):
-        self.index = 0
-        path = self._find_serial_port(self.index)
-        if not path:
-            raise Exception("No suitable serial port found.")
-        self.device = serial.Serial(path)
-        self.device.timeout = 5
-        try:
-            self._send_hello()
-            return
-        except self.device.SerialTimeoutException:
-            # Attempt second port
-            self.index = 1
-            path = self._find_serial_port(self.index)
-            if not path:
-                raise Exception("No suitable serial port found.")
-            self.device = serial.Serial(path)
-            self.device.timeout = 5
-            self._send_hello()
+    _buffer = b""
+
+    def _buffered_read(self, length):
+        while True:
+            if len(self._buffer) >= length:
+                ret = self._buffer[:length]
+                self._buffer = self._buffer[length:]
+                return ret
+
+            self._buffer += bytes(self.ep_in.read(64))
 
     def _send_hello(self):
         # Send hello command to get protocol version from Faultier
@@ -74,76 +67,93 @@ class Faultier:
     def __init__(self, path = None):
         """
         """
-        if path:
-            self.device = serial.Serial(path)
-            self.device.timeout = 5
-            # Attempt to send hello
-            self._send_hello()
-        else:
-            self._open_auto()
+        # Check for old Faultier firmware
+        dev = usb.core.find(idVendor=0x2b3e, idProduct=0x2343)
+        if dev:
+            print("Your Faultier is using an old firmware!")
+            print("Please update it here: https://faultier.hextree.io/")
+            print("---")
+            print("Alternatively you can downgrade your faultier-python version by running:")
+            print("pip3 install faultier==0.1.43")
+            raise ValueError("Incompatible Faultier firmware version!")
 
+        # Find Faultier device
+        dev = usb.core.find(idVendor=self.VID, idProduct=self.PID)
+        if dev is None:
+            raise ValueError(f"No Faultier found!")
+
+        dev.set_configuration()
+        cfg = dev.get_active_configuration()
+
+        # Claim interface 0 / alt‑setting 0
+        intf = cfg[(0, 0)]
+        usb.util.claim_interface(dev, intf.bInterfaceNumber)
+        intf = usb.util.find_descriptor(
+            cfg,
+            bInterfaceNumber=0,
+            bAlternateSetting=0
+        )
+        if intf is None:
+            raise ValueError("USB issue: Could not find descriptor. Please double-check Faultier firmware version.")
+
+        usb.util.claim_interface(dev, intf.bInterfaceNumber)
+
+        # 0x02  -> Bulk‑OUT
+        # 0x83  -> Bulk‑IN  (0x80 | 0x03)
+        EP_OUT_ADDR = 0x02
+        EP_IN_ADDR  = 0x83
+
+        ep_out = usb.util.find_descriptor(intf, bEndpointAddress=EP_OUT_ADDR)
+        ep_in  = usb.util.find_descriptor(intf, bEndpointAddress=EP_IN_ADDR)
+
+        if ep_out is None or ep_in is None:
+            raise ValueError("Endpoints 0x02 (OUT) or 0x83 (IN) not found")
+    
+        self.dev = dev
+        self.ep_in = ep_in
+        self.ep_out = ep_out
+        self._send_hello()
         
         self.default_settings()
     
     def get_serial_path(self):
         """
-        The Faultier comes up as two serial ports. The first one is the control channel,
-        and the second one is the UART bridge onto the 20-pin connector.
-        This function returns the path to the second serial port.
+        This function gets us the device path or COM port for
+        Faultier's serial bridge.
         """
-        if(self.index == 0):
-            return self._find_serial_port(index=1)
-        else:
-            return self._find_serial_port(index=0)
-
-    def _find_serial_port(self, index = 0):
         system = platform.system()
         if system == "Windows":
-            return self._find_serial_port_windows(index)
+            return self._find_serial_port_windows()
         elif system == "Darwin":  # macOS
-            return self._find_serial_port_macos(index)
+            return self._find_serial_port_macos()
         elif system == "Linux":
-            return self._find_serial_port_linux(index)
+            return self._find_serial_port_linux()
         else:
             raise Exception(f"Unsupported platform: {system}")
     
-    def _find_serial_port_windows(self, index = 0):
-        i = 0
+    def _find_serial_port_windows(self):
         for port in serial.tools.list_ports.comports():
-            if self.VID.lower() in port.hwid.lower() and self.PID.lower() in port.hwid.lower():
-                if(i == index):
-                    return port.device
-                i += 1
+            if f"{self.VID:04x}" in port.hwid.lower() and f"{self.PID:04x}" in port.hwid.lower():
+                return port.device
         return None
 
-    def _find_serial_port_macos(self, index = 0):
-        i = 0
+    def _find_serial_port_macos(self):
         ports = serial.tools.list_ports.comports()
-        faultiers = []
         for port in ports:
-            if f"USB VID:PID={self.VID.upper()}:{self.PID.upper()}" in port.hwid:
-                faultiers.append(port.device)
-        if len(faultiers) == 0:
-            return None
-        
-        faultiers.sort()
-        return faultiers[index]
-
-    def _find_serial_port_linux(self, index = 0):
-        if(index == 0):
-            return "/dev/serial/by-id/usb-stacksmashing_Faultier_faultier-if00"
-        if(index == 1):
-            return "/dev/serial/by-id/usb-stacksmashing_Faultier_faultier-if03"
+            if f"USB VID:PID={self.VID:04X}:{self.PID:04X}" in port.hwid:
+                return port.device
         return None
+
+    def _find_serial_port_linux(self):
+        return "/dev/serial/by-id/usb-stacksmashing_Faultier_faultier-if02"
 
     def _read_response(self):
-        header = self.device.read(4)
-        if(header != b"FLTR"):
-            print(header)
+        header = self._buffered_read(4)
+        if(header[:4] != b"FLTR"):
             raise ValueError(f"Invalid header received: {header}")
-        length_data = self.device.read(4)
+        length_data = self._buffered_read(4)
         length = struct.unpack("<I", length_data)[0]
-        return self.device.read(length)
+        return bytes(self._buffered_read(length))
 
     def _check_response(self):
         response = self._read_response()
@@ -166,22 +176,10 @@ class Faultier:
         else:
             raise ValueError("No OK or Error received.", resp)
 
-    # def captureADC(self):
-    #     # TODO will be replaced by command structure
-    #     self.device.write(b"A")
-    #     response = self._read_response()
-    #     resp = ResponseADC()
-    #     resp.ParseFromString(response)
-    #     return convert_uint8_samples(resp.samples)
-    
     def _send_protobuf(self, protobufobj):
         serialized = protobufobj.SerializeToString()
         length = len(serialized)
-        # Header
-        self.device.write(b"FLTR")
-        self.device.write(struct.pack("<I", length))
-        self.device.write(serialized)
-        self.device.flush()
+        self.ep_out.write(b"FLTR" + struct.pack("<I", length) + serialized)
 
     def _get_default_settings(self):
         return CommandConfigureGlitcher(
