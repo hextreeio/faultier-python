@@ -210,7 +210,7 @@ class Faultier:
 
             - `ADC_CROWBAR`: Measure on the Crowbar pin (drain-side)
             - `ADC_MUX0`: Measure on the MUX0 pin
-            - `ADX_EXT1`: Measure on the EXT1 pin
+            - `ADC_EXT1`: Measure on the EXT1 pin
 
         :param sample_count: The number of ADC samples to collect. Maximum is 30000.
         """
