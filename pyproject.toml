@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "faultier"
-version = "0.2.00"
+version = "0.2.0b3"
 #dynamic = ["version"]
 
 authors = [{ name = "Thomas 'stacksmashing' Roth", email = "code@stacksmashing.net"}]
@@ -20,11 +20,11 @@ description = "A library to control the Faultier fault-injection tool."
 dependencies = [
     "pyserial",
     "pyusb",
-    #"plotly",
+    "plotly",
     "google",
-    "protobuf",
+    "protobuf==6.31.0",
     "tqdm",
-    # "matplotlib",
+    "matplotlib",
     "jupyter",
     # "numpy"
 ]

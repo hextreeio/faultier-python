@@ -11,6 +11,46 @@ import os
 
 import usb.core
 import usb.util
+from usb.core import USBError
+import signal
+import functools
+
+def no_interrupt(func):
+    """Decorator: if SIGINT happens during func, defer it until after func returns."""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        interrupted = False
+        # custom handler: just record that an interrupt was requested
+        def _handler(signum, frame):
+            nonlocal interrupted
+            interrupted = True
+            # swallow the signal so func keeps running...
+
+        # save and replace the SIGINT handler
+        prev_handler = signal.getsignal(signal.SIGINT)
+        signal.signal(signal.SIGINT, _handler)
+
+        try:
+            result = func(*args, **kwargs)
+        finally:
+            # restore the original handler
+            signal.signal(signal.SIGINT, prev_handler)
+
+            # if an interrupt arrived, dispatch it now:
+            if interrupted:
+                # default handler: raise KeyboardInterrupt
+                if prev_handler in (signal.SIG_DFL, None):
+                    raise KeyboardInterrupt
+                # ignored by default: do nothing
+                elif prev_handler == signal.SIG_IGN:
+                    pass
+                # custom handler: call it
+                else:
+                    prev_handler(signal.SIGINT, None)
+
+        return result
+
+    return wrapper
 
 # Get the directory of the current module
 MODULE_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -52,6 +92,7 @@ class Faultier:
 
             self._buffer += bytes(self.ep_in.read(64))
 
+    @no_interrupt
     def _send_hello(self):
         # Send hello command to get protocol version from Faultier
         hello = CommandHello()
@@ -60,7 +101,7 @@ class Faultier:
         self._send_protobuf(cmd)
         response = self._check_response()
         if response.hello.version != FAULTIER_VERSION:
-            self.device.close()
+            usb.util.dispose_resources(self.dev)
             raise ValueError(f"Invalid Faultier version: Locally: {FAULTIER_VERSION} - Device: {response.hello.version}")
         
 
@@ -71,7 +112,7 @@ class Faultier:
         dev = usb.core.find(idVendor=0x2b3e, idProduct=0x2343)
         if dev:
             print("Your Faultier is using an old firmware!")
-            print("Please update it here: https://faultier.hextree.io/")
+            print("Please update it here: https://github.com/hextreeio/faultier/releases")
             print("---")
             print("Alternatively you can downgrade your faultier-python version by running:")
             print("pip3 install faultier==0.1.43")
@@ -82,12 +123,27 @@ class Faultier:
         if dev is None:
             raise ValueError(f"No Faultier found!")
 
-        dev.set_configuration()
-        cfg = dev.get_active_configuration()
+        cfg = None
+        # dev.set_configuration()
+        try:
+            cfg = dev.get_active_configuration()
+        except USBError as e:
+            if "Access denied" in str(e):
+                system = platform.system()
+                if system == "Linux":
+                    print(e)
+                    print("Access to Faultier got denied. This is, in most cases, because of a missing udev rule.")
+                    print("On most systems, this is solved by adding this line to /etc/udev/rules.d/99-faultier.conf:")
+                    print('SUBSYSTEM=="usb", ATTR{idVendor}=="37de", ATTR{idProduct}=="fffd", MODE="0666",GROUP="plugdev')
+                    print("And then running:")
+                    print("sudo udevadm control --reload")
+                    print("Re-connect your Faultier, and hopefully everything should be smooth sailing!")
+            raise e
+
 
         # Claim interface 0 / alt‑setting 0
         intf = cfg[(0, 0)]
-        usb.util.claim_interface(dev, intf.bInterfaceNumber)
+
         intf = usb.util.find_descriptor(
             cfg,
             bInterfaceNumber=0,
@@ -95,8 +151,6 @@ class Faultier:
         )
         if intf is None:
             raise ValueError("USB issue: Could not find descriptor. Please double-check Faultier firmware version.")
-
-        usb.util.claim_interface(dev, intf.bInterfaceNumber)
 
         # 0x02  -> Bulk‑OUT
         # 0x83  -> Bulk‑IN  (0x80 | 0x03)
@@ -169,17 +223,28 @@ class Faultier:
         response = self._read_response()
         resp = Response()
         resp.ParseFromString(response)
-        if resp.ok:
-            return
-        if resp.error:
+        if resp.WhichOneof('type') == 'error':
             raise ValueError("Error: " + resp.error.message)
-        else:
-            raise ValueError("No OK or Error received.", resp)
+        if resp.WhichOneof('type') == 'ok':
+            return
+        
+        # if resp.ok:
+        #     return
+        # if resp.error:
+        #     raise ValueError("Error: " + resp.error.message)
+        # else:
+        #     raise ValueError("No OK or Error received.", resp)
 
     def _send_protobuf(self, protobufobj):
         serialized = protobufobj.SerializeToString()
         length = len(serialized)
-        self.ep_out.write(b"FLTR" + struct.pack("<I", length) + serialized)
+        message = b"FLTR" + struct.pack("<I", length) + serialized
+        try:
+            self.ep_out.write(message)
+        except USBError as e:
+            if "Access denied" in str(e):
+                print("Access to Faultier denied. In most cases this is because Faultier is already claimed. Reset the Faultier and try again.")
+            raise e
 
     def _get_default_settings(self):
         return CommandConfigureGlitcher(
@@ -200,7 +265,8 @@ class Faultier:
         """
         self.glitcher_configuration = self._get_default_settings()
 
-    def configure_adc(self, source, sample_count):
+    @no_interrupt
+    def configure_adc(self, source, sample_count, clock_division = 1):
         """
         Configures the ADC of the Faultier. The ADC is filled every-time
         that power_cycle() or glitch() is run and starts running after the
@@ -213,19 +279,23 @@ class Faultier:
             - `ADC_EXT1`: Measure on the EXT1 pin
 
         :param sample_count: The number of ADC samples to collect. Maximum is 30000.
+
+        :param clock_division: Configure the ADC clock divider. The sample-rate is: 250000000/(96 * clock_division)
         """
 
-        if sample_count > 30000:
-            raise ValueError(f"Sample count must be under 30000. Provided {sample_count}.")
+        # if sample_count > 30000:
+        #     raise ValueError(f"Sample count must be under 30000. Provided {sample_count}.")
         configure_adc = CommandConfigureADC(
             source = source,
-            sample_count = sample_count
+            sample_count = sample_count,
+            clock_division = clock_division
         )
         cmd = Command()
         cmd.configure_adc.CopyFrom(configure_adc)
         self._send_protobuf(cmd)
         self._check_ok()
 
+    @no_interrupt
     def configure_glitcher(self, trigger_type = None, trigger_source = None, glitch_output = None, delay = None, pulse = None, power_cycle_length= None, power_cycle_output = None, trigger_pull_configuration = None):
         """
         Configures the glitcher, i.e. glitch-output, delay, pulse, etc. It does not Arm
@@ -331,6 +401,7 @@ class Faultier:
             self.glitcher_configuration.pulse = pulse
         self._glitch()
 
+    @no_interrupt
     def _glitch(self):
         self._send_configuration()
 
@@ -339,6 +410,7 @@ class Faultier:
         self._send_protobuf(cmd)
         self._check_response()
 
+    @no_interrupt
     def glitch_non_blocking(self, delay = None, pulse = None):
         """
         A non-blocking version of the glitch function. Allows to arm a glitch
@@ -367,6 +439,7 @@ class Faultier:
         """
         self._check_response()
 
+    @no_interrupt
     def swd_check(self):
         """
         Uses the Program header to very quickly check whether an SWD device
@@ -379,6 +452,7 @@ class Faultier:
         response = self._check_response()
         return response.swd_check.enabled
 
+    @no_interrupt
     def nrf52_check(self):
         """
         nRF52 specific check to see whether APPROTECT is disabled/flash can be read.
@@ -394,6 +468,7 @@ class Faultier:
             pass
         return response.swd_check.enabled
 
+    @no_interrupt
     def power_cycle(self):
         """
         Power-cycles the target.
@@ -412,6 +487,7 @@ class Faultier:
         self._send_protobuf(cmd)
         self._check_response()
 
+    @no_interrupt
     def read_adc(self):
         """
         Receives the current ADC sample-buffer from the device.
