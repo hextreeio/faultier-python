@@ -254,6 +254,15 @@ def faultier_test(args=None):
         print("###############################")
 
 
+def faultier_visualize(args):
+    print(f"Visualizing {args.file}")
+    try:
+        from .DashApp import visualize
+    except:
+        print("Please run: pip3 install 'dash>=2.14.0' 'plotly>=5.17.0' 'pandas>=2.0.0' 'dash-bootstrap-components>=1.5.0' 'numpy>=1.24.0'")
+    visualize(args.file, debug=False)
+
+
 def main():
     # Set up argparse
     parser = argparse.ArgumentParser(description="Faultier tool")
@@ -288,6 +297,10 @@ def main():
 
     # Parse arguments and check for subcommand
     subparsers.add_parser("selfcheck", help="Run self test").set_defaults(func=faultier_test)
+
+    visualize_parser = subparsers.add_parser("visualize", help="Visualize a glitching database")
+    visualize_parser.set_defaults(func=faultier_visualize)
+    visualize_parser.add_argument("file", help="File to visualize")
 
     args = parser.parse_args()
 

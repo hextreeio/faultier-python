@@ -4,3 +4,4 @@ from .FaulterVis import *
 from .RandomOrderGenerator import RandomOrderGenerator
 # from .GlitchDataCollection import GlitchDataCollection
 from .FaultierTool import *
+from .GlitchDatabase import GlitchDatabase
