@@ -133,8 +133,8 @@ class Faultier:
                 if system == "Linux":
                     print(e)
                     print("Access to Faultier got denied. This is, in most cases, because of a missing udev rule.")
-                    print("On most systems, this is solved by adding this line to /etc/udev/rules.d/99-faultier.conf:")
-                    print('SUBSYSTEM=="usb", ATTR{idVendor}=="37de", ATTR{idProduct}=="fffd", MODE="0666",GROUP="plugdev')
+                    print("On most systems, this is solved by adding this line to /etc/udev/rules.d/99-faultier.rules:")
+                    print('SUBSYSTEM=="usb", ATTR{idVendor}=="37de", ATTR{idProduct}=="fffd", MODE="0666",GROUP="plugdev"')
                     print("And then running:")
                     print("sudo udevadm control --reload")
                     print("Re-connect your Faultier, and hopefully everything should be smooth sailing!")

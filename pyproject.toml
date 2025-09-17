@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "faultier"
-version = "0.2.0b3"
+version = "0.2.2"
 #dynamic = ["version"]
 
 authors = [{ name = "Thomas 'stacksmashing' Roth", email = "code@stacksmashing.net"}]
@@ -22,11 +22,17 @@ dependencies = [
     "pyusb",
     "plotly",
     "google",
-    "protobuf==6.31.0",
+    "protobuf==5.29.5",
     "tqdm",
     "matplotlib",
     "jupyter",
-    # "numpy"
+    # "numpy",
+    "dash>=2.14.0",
+    "plotly>=5.17.0",
+    "pandas>=2.0.0",
+    "dash-bootstrap-components>=1.5.0",
+    "numpy>=1.24.0",
+    "pyocd-faultier"
 ]
 
 #[project.urls]

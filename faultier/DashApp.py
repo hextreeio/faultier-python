@@ -118,8 +118,8 @@ def create_layout():
     ], fluid=True)
 
 # Load initial data and set layout
-df = load_data()
-identifiers, results = get_unique_values(df)
+# df = load_data()
+# identifiers, results = get_unique_values(df)
 app.layout = create_layout()
 
 @app.callback(
@@ -252,7 +252,7 @@ def update_plots(selected_identifiers, selected_results):
     
     return scatter_fig, pulse_fig, delay_fig
 
-def visualize(database_name, host='127.0.0.1', port=8888, debug=True):
+def visualize(database_name, host='127.0.0.1', port=8888, debug=False):
     """
     Start the visualization server for the specified database.
     
@@ -268,9 +268,9 @@ def visualize(database_name, host='127.0.0.1', port=8888, debug=True):
     # Update the layout with the new database
     app.layout = create_layout()
     
-    print(f"Starting Dash application...")
-    print(f"Database: {DATABASE_NAME}")
-    print(f"Server: http://{host}:{port}")
+    # print(f"Starting Dash application...")
+    # print(f"Database: {DATABASE_NAME}")
+    # print(f"Server: http://{host}:{port}")
     print("Press Ctrl+C to stop the server")
     
     # Run the app

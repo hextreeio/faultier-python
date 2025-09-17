@@ -96,7 +96,6 @@ def faultier_nrf52_lock(file_path):
     loader = MemoryLoader(session)
     loader.add_data(0x10001208, b"\x00\xFF\xFF\xFF")
     loader.commit()
-    # FileProgrammer(session).program("/Users/thomas/code/git/faultier_glitchtag_projects/blx_characterization/build/zephyr/blx_characterization.elf")
     target.reset()
 
 def faultier_nrf52_unlock(args=None):

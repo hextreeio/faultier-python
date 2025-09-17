@@ -13,7 +13,7 @@ class GlitchDatabase:
         gd.flush()  # Optional - results are auto-flushed
     """
     
-    def __init__(self, db_path: str, identifier: str, auto_flush: bool = True, batch_size: int = 100):
+    def __init__(self, db_path: str, identifier: str, auto_flush: bool = True, batch_size: int = 5):
         """
         Initialize the GlitchDatabase.
         
